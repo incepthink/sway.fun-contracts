@@ -1,0 +1,9 @@
+[project]
+authors = ["OEM Configuration (temporary user)"]
+entry = "main.sw"
+license = "Apache-2.0"
+name = "liquiditypool"
+
+[dependencies]
+standards = { git = "https://github.com/FuelLabs/sway-standards", tag = "v0.4.3" }
+sway_libs = { git = "https://github.com/FuelLabs/sway-libs", tag = "v0.21.0" }
