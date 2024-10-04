@@ -25,12 +25,18 @@ use sway_libs::{
         _owner,
         initialize_ownership,
         only_owner,
-    }
+    },
 };
 use sway_libs::asset::metadata::*;
 use standards::{src20::SRC20, src3::SRC3, src5::{SRC5, State}, src7::{Metadata, SRC7}};
 use interface::Constructor;
-use std::{context::msg_amount, hash::Hash, storage::storage_string::*, string::String, asset::transfer};
+use std::{
+    asset::transfer,
+    context::msg_amount,
+    hash::Hash,
+    storage::storage_string::*,
+    string::String,
+};
 use errors::{AmountError, MintError, SetError};
 
 // The SRC-20 storage block
@@ -84,7 +90,7 @@ impl SRC20 for Contract {
 }
 
 impl SRC3 for Contract {
-    #[storage(read,write)]
+    #[storage(read, write)]
     fn mint(recipient: Identity, sub_id: SubId, amount: u64) {
         only_owner();
 
@@ -110,14 +116,16 @@ impl SRC3 for Contract {
 
     #[payable]
     #[storage(read, write)]
-    fn burn(sub_id: SubId, amount: u64) {
-        require(msg_amount() == amount, AmountError::AmountMismatch);
-        _burn(storage.total_supply, sub_id, amount);
-    }
+ fn burn(sub_id: SubId, amount: u64) {
+    only_owner();
+    require(msg_amount() == amount, AmountError::AmountMismatch);
+    _burn(storage.total_supply, sub_id, amount);
+}
+
 }
 
 impl SRC5 for Contract {
-     #[storage(read)]
+    #[storage(read)]
     fn owner() -> State {
         _owner()
     }
@@ -190,19 +198,24 @@ abi Transfer {
     fn transfer(target: Identity, asset_id: AssetId, coins: u64);
 }
 
+abi TokenContractABI {
+    #[storage(read, write)]
+    fn mint(recipient: Identity, sub_id: SubId, amount: u64);
+}
+
 impl Transfer for Contract {
     #[storage(read, write)]
     fn transfer(target: Identity, asset_id: AssetId, coins: u64) {
         let owner_state = _owner();
         let launched = storage.launched.read();
 
-       if !launched {
+        if !launched {
             require(
                 match owner_state {
                     State::Initialized(owner) => target == owner,
                     _ => false,
                 },
-                "Forbidden Action"
+                "Forbidden Action",
             );
         }
 
@@ -216,8 +229,3 @@ impl Constructor for Contract {
         initialize_ownership(owner);
     }
 }
-
-
-
-
-

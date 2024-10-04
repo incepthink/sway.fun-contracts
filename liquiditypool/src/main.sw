@@ -13,8 +13,6 @@ use standards::src5::*;
 
 configurable {
     FEE_RATE: u64 = 30,
-    TOKEN_ASSET_ID: b256 = 0x0000000000000000000000000000000000000000000000000000000000000000,
-    BASE_ASSET_ID: b256 = 0x0000000000000000000000000000000000000000000000000000000000000000,
 }
 
 
@@ -22,6 +20,8 @@ storage {
     owner: State = State::Uninitialized,
     token_reserve: u64 = 0,
     base_reserve: u64 = 0,
+    token_asset_id: AssetId = AssetId::from(0x0000000000000000000000000000000000000000000000000000000000000000),
+    base_asset_id: AssetId = AssetId::from(0x0000000000000000000000000000000000000000000000000000000000000000),
     liquidity_locked: bool = false,
     pending_token_amount: u64 = 0,
     pending_base_amount: u64 = 0,
@@ -29,7 +29,7 @@ storage {
 
 abi LiquidityPoolContract {
     #[storage(read, write)]
-    fn constructor(owner: Identity);
+   fn constructor(owner: Identity, token_asset: AssetId, base_asset: AssetId);
 
     #[storage(read, write)]
     #[payable]
@@ -55,11 +55,14 @@ abi LiquidityPoolContract {
 
 impl LiquidityPoolContract for Contract {
     #[storage(read, write)]
-    fn constructor(owner: Identity) {
+    fn constructor(owner: Identity, token_asset: AssetId, base_asset: AssetId) {
         initialize_ownership(owner);
-        let token_asset_id = AssetId::from(TOKEN_ASSET_ID);
-        let base_asset_id = AssetId::from(BASE_ASSET_ID);
-        require(token_asset_id != base_asset_id, InitError::IdenticalAssets);
+
+        require(token_asset != base_asset, InitError::IdenticalAssets);
+
+        // Store asset IDs in storage
+        storage.token_asset_id.write(token_asset);
+        storage.base_asset_id.write(base_asset);
     }
 
     #[storage(read, write)]
@@ -68,8 +71,9 @@ impl LiquidityPoolContract for Contract {
         only_owner();
         let amount = msg_amount();
         let asset_id = msg_asset_id();
-        let token_asset_id = AssetId::from(TOKEN_ASSET_ID);
-        let base_asset_id = AssetId::from(BASE_ASSET_ID);
+        let token_asset_id = storage.token_asset_id.read();
+        let base_asset_id = storage.base_asset_id.read();
+
         require(amount > 0, InputError::InvalidAmounts);
 
         if asset_id == token_asset_id {
@@ -86,8 +90,6 @@ impl LiquidityPoolContract for Contract {
         only_owner();
         let token_amount = storage.pending_token_amount.read();
         let base_amount = storage.pending_base_amount.read();
-        let token_asset_id = AssetId::from(TOKEN_ASSET_ID);
-        let base_asset_id = AssetId::from(BASE_ASSET_ID);
 
         require(token_amount > 0 && base_amount > 0, InputError::InvalidAmounts);
 
@@ -108,10 +110,11 @@ impl LiquidityPoolContract for Contract {
     #[storage(read, write)]
     #[payable]
     fn swap_exact_tokens_for_base(min_base_out: u64) -> u64 {
+        require(storage.liquidity_locked.read(), SwapError::LiquidityNotAvailable);
         let token_amount = msg_amount();
         let asset_id = msg_asset_id();
-        let token_asset_id = AssetId::from(TOKEN_ASSET_ID);
-        let base_asset_id = AssetId::from(BASE_ASSET_ID);
+        let token_asset_id = storage.token_asset_id.read();
+        let base_asset_id = storage.base_asset_id.read();
         let token_reserve = storage.token_reserve.read();
         let base_reserve = storage.base_reserve.read();
         
@@ -140,10 +143,11 @@ impl LiquidityPoolContract for Contract {
     #[payable]
     fn swap_exact_base_for_tokens(min_tokens_out: u64) -> u64 {
         require(storage.liquidity_locked.read(), SwapError::LiquidityNotAvailable);
+
         let base_amount = msg_amount();
         let asset_id = msg_asset_id();
-        let token_asset_id = AssetId::from(TOKEN_ASSET_ID);
-        let base_asset_id = AssetId::from(BASE_ASSET_ID);
+        let token_asset_id = storage.token_asset_id.read();
+        let base_asset_id = storage.base_asset_id.read();
         let token_reserve = storage.token_reserve.read();
         let base_reserve = storage.base_reserve.read();
 
@@ -172,6 +176,7 @@ impl LiquidityPoolContract for Contract {
     fn get_price() -> u64 {
         let token_reserve = storage.token_reserve.read();
         let base_reserve = storage.base_reserve.read();
+
         require(token_reserve > 0, InputError::ZeroReserve);
 
         base_reserve * 1_000_000 / token_reserve 
@@ -179,21 +184,24 @@ impl LiquidityPoolContract for Contract {
 
     #[storage(read)]
     fn get_pool_info() -> PoolInfo {
-        let token_asset_id = AssetId::from(TOKEN_ASSET_ID);
-        let base_asset_id = AssetId::from(BASE_ASSET_ID);
         PoolInfo {
             token_reserve: storage.token_reserve.read(),
             base_reserve: storage.base_reserve.read(),
-            token_asset_id,
-            base_asset_id,
+            token_asset_id: storage.token_asset_id.read(),
+            base_asset_id: storage.base_asset_id.read(),
             liquidity_locked: storage.liquidity_locked.read(),
         }
     }
 }
 
 fn calculate_swap_output(input_amount: u64, input_reserve: u64, output_reserve: u64) -> u64 {
-    let input_amount_with_fee = input_amount * (10000 - FEE_RATE);
-    let numerator = input_amount_with_fee * output_reserve;
-    let denominator = input_reserve + input_amount_with_fee;
+     // Calculate the input amount with fee
+    let amount_in_with_fee = input_amount * (10_000 - FEE_RATE);
+
+    // Calculate the numerator and denominator for the swap formula
+    let numerator = amount_in_with_fee * output_reserve;
+    let denominator = (input_reserve * 10_000) + amount_in_with_fee;
+
+    // Return the result of the division
     numerator / denominator
 }

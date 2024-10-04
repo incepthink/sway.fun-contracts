@@ -6,6 +6,7 @@ pub enum AmountError {
 
 pub enum MintError {
     MaxMinted: (),
+    NotAuthorized: (),
 }
 
 pub enum SetError {

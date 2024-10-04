@@ -5,8 +5,10 @@ pub enum PaymentError {
     MintAlreadyActive: (),
     MaxSupplyExceeded: (),
     Unauthorized: (),
+    InsufficientFunds: (),
 }
 
 pub enum ContributionError {
     InsufficientAmount: (),
+    InvalidAmount: (),
 }
